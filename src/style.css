@@ -14,19 +14,25 @@ body {
   color: var(--ink);
 }
 header {
-  padding: 28px 24px 8px;
+  padding: 20px 24px 4px;
   text-align: center;
 }
 h1 { margin: 0; font-size: 28px; letter-spacing: .04em; }
 .lead { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
 main {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
   align-items: start;
+  gap: 16px;
+  padding: 16px 20px 24px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+.controls { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.stage { position: sticky; top: 16px; min-width: 0; }
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; }
+  .stage { position: static; }
 }
 .panel {
   background: var(--panel);
@@ -71,9 +77,10 @@ textarea { resize: vertical; }
 }
 .tab.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .hidden { display: none; }
-.preview-panel { grid-column: 1 / -1; text-align: center; }
+.preview-panel { text-align: center; }
 #preview {
-  width: min(512px, 100%);
+  width: 100%;
+  max-width: min(100%, calc(100vh - 285px));
   aspect-ratio: 1;
   height: auto;
   border-radius: 16px;
