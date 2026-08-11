@@ -1,9 +1,9 @@
-import { rasterizeText, rasterizeSVG, rasterizeDXF } from './raster.js';
-import { dilate } from './edt.js';
-import { buildHeightField } from './puff.js';
-import { buildMesh } from './mesh.js';
-import { renderPreview } from './preview.js';
-import { Viewer3D } from './viewer3d.js';
+import { rasterizeText, rasterizeSVG, rasterizeDXF } from './raster.js?v=20260811a';
+import { dilate } from './edt.js?v=20260811a';
+import { buildHeightField } from './puff.js?v=20260811a';
+import { buildMesh } from './mesh.js?v=20260811a';
+import { renderPreview } from './preview.js?v=20260811a';
+import { Viewer3D } from './viewer3d.js?v=20260811a';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -13,15 +13,24 @@ let mode = 'text';
 let svgText = null;
 let dxfText = null;
 let lastField = null;
+const PREVIEW_COLORS = { base: [196, 181, 253], letter: [124, 58, 237] };
 let pending = null;
 
 // The 3D view is the point of the preview; the flat shaded renderer is only a
-// fallback for machines without WebGL.
+// fallback for machines without WebGL. Say so on screen when that happens --
+// the two renderers look similar enough that a silent fallback reads as a bug.
+const hintEl = document.querySelector('.viewhint');
 let viewer = null;
 try {
   viewer = new Viewer3D(previewCanvas);
+  viewer.onContextLost = () => {
+    viewer = null;
+    hintEl.textContent = '3D表示が中断されました（WebGLコンテキスト消失）。ページを再読み込みしてください。';
+    if (lastField) renderPreview(previewCanvas, lastField, PREVIEW_COLORS);
+  };
 } catch (err) {
-  console.warn('3Dプレビューを使えないため平面表示にします:', err.message);
+  console.warn('3Dプレビューを使えないため平面表示にします:', err);
+  hintEl.textContent = `平面プレビュー（3D表示なし）: ${err.message}`;
 }
 
 const numeric = [
@@ -86,7 +95,7 @@ async function regenerate() {
     lastField = buildHeightField(mask, n, opts);
     const elapsed = Math.round(performance.now() - started);
     if (viewer) viewer.setField(lastField);
-    else renderPreview(previewCanvas, lastField, { base: [196, 181, 253], letter: [124, 58, 237] });
+    else renderPreview(previewCanvas, lastField, PREVIEW_COLORS);
 
     let maxH = 0;
     for (const h of lastField.height) if (h > maxH) maxH = h;

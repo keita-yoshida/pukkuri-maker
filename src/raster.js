@@ -2,7 +2,7 @@
 // grid. Everything downstream only ever sees the mask, so adding a new input
 // kind means adding one function here.
 
-import { parseDXF, pathsBounds } from './dxf.js';
+import { parseDXF, pathsBounds } from './dxf.js?v=20260811a';
 
 /** Fraction of the grid left empty around the artwork. */
 const MARGIN = 0.12;

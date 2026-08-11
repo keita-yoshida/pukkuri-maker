@@ -9,8 +9,8 @@
 //   classic  distance mapped onto a circular arc. Cheap and perfectly even,
 //            but every stroke reaches the same height and wide areas plateau.
 
-import { insideDistance, dilate } from './edt.js';
-import { solveCapillary } from './capillary.js';
+import { insideDistance, dilate } from './edt.js?v=20260811a';
+import { solveCapillary } from './capillary.js?v=20260811a';
 
 /** Circular dome profile: 0 at the edge, `height` once `d >= radius`. */
 function dome(d, radius, height) {

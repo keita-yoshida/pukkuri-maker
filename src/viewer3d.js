@@ -6,7 +6,7 @@
 // take their normals from the height field's gradient rather than the triangle
 // they sit on, otherwise the alternating quad diagonals stripe the domes.
 
-import { emitTriangles, TOP } from './mesh.js';
+import { emitTriangles, TOP } from './mesh.js?v=20260811a';
 
 const VERT = `
 attribute vec3 aPos;
@@ -105,12 +105,32 @@ function coarsen(field, maxN) {
   return { height: h, solid: s, n: m, mmPerPx: mmPerPx * step };
 }
 
+function getContext(canvas) {
+  const attrs = { antialias: true, preserveDrawingBuffer: true, failIfMajorPerformanceCaveat: false };
+  for (const name of ['webgl2', 'webgl', 'experimental-webgl']) {
+    try {
+      const gl = canvas.getContext(name, attrs);
+      if (gl) return gl;
+    } catch { /* try the next one */ }
+  }
+  return null;
+}
+
 export class Viewer3D {
   constructor(canvas) {
     this.canvas = canvas;
-    this.gl = canvas.getContext('webgl', { antialias: true, preserveDrawingBuffer: true });
-    if (!this.gl) throw new Error('WebGL が使えません');
+    this.gl = getContext(canvas);
+    if (!this.gl) {
+      throw new Error('このブラウザで WebGL を初期化できませんでした（ハードウェアアクセラレーションが無効かもしれません）');
+    }
     const gl = this.gl;
+
+    // A lost context silently blanks the canvas, so surface it instead.
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.onContextLost?.();
+    });
+    canvas.addEventListener('webglcontextrestored', () => this.onContextRestored?.());
 
     this.program = gl.createProgram();
     gl.attachShader(this.program, compile(gl, gl.VERTEX_SHADER, VERT));
