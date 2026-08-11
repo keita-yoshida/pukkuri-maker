@@ -1,0 +1,12 @@
+{
+  "name": "pukkuri-maker",
+  "version": "1.0.0",
+  "description": "Puffy uchiwa-style STL generator from text, SVG or DXF — runs entirely in the browser",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node test/smoke.mjs"
+  },
+  "license": "MIT"
+}

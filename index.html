@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ぷっくりメーカー — うちわ文字STLジェネレーター</title>
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<header>
+  <h1>ぷっくりメーカー</h1>
+  <p class="lead">テキスト・SVG・DXF から、うちわ文字風の「ぷっくり」した3Dプリント用 STL を作ります。</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1. 形をつくる</h2>
+
+    <div class="tabs" role="tablist">
+      <button class="tab is-active" data-mode="text" role="tab">テキスト</button>
+      <button class="tab" data-mode="svg" role="tab">SVG</button>
+      <button class="tab" data-mode="dxf" role="tab">DXF</button>
+    </div>
+
+    <div class="tabpage" data-page="text">
+      <label>文字（改行で複数行）
+        <textarea id="text" rows="2">ぷっくり</textarea>
+      </label>
+      <label>フォント
+        <select id="fontFamily">
+          <option value='"Hiragino Maru Gothic ProN","Zen Maru Gothic","Rounded Mplus 1c",sans-serif'>丸ゴシック系</option>
+          <option value='"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",sans-serif'>ゴシック系</option>
+          <option value='"Hiragino Mincho ProN","Noto Serif JP","Yu Mincho",serif'>明朝系</option>
+          <option value='"Impact","Arial Black",sans-serif'>Impact</option>
+        </select>
+      </label>
+      <label>太らせる（mm）<input type="range" id="bold" min="0" max="4" step="0.1" value="0.8"><output></output></label>
+      <label>字間<input type="range" id="tracking" min="-0.2" max="0.5" step="0.01" value="0"><output></output></label>
+    </div>
+
+    <div class="tabpage hidden" data-page="svg">
+      <label>SVGファイル<input type="file" id="svgFile" accept=".svg,image/svg+xml"></label>
+      <p class="hint">塗り（fill）のある閉じたパスを推奨。線だけのSVGは細くなることがあります。</p>
+    </div>
+
+    <div class="tabpage hidden" data-page="dxf">
+      <label>DXFファイル<input type="file" id="dxfFile" accept=".dxf"></label>
+      <label><input type="checkbox" id="dxfFill" checked> 閉じた図形を塗りつぶす</label>
+      <label>線の太さ（mm）<input type="range" id="dxfStroke" min="0.2" max="6" step="0.1" value="1.5"><output></output></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2. ぷっくり具合</h2>
+    <label>全体サイズ（mm）<input type="range" id="size" min="30" max="200" step="1" value="90"><output></output></label>
+    <label>文字の高さ（mm）<input type="range" id="letterHeight" min="0.5" max="12" step="0.1" value="4"><output></output></label>
+    <label>丸まり幅（mm）<span class="hint-inline">小さいほど角ばる</span><input type="range" id="letterRadius" min="0.5" max="15" step="0.1" value="4"><output></output></label>
+
+    <label>フチ（縁取り）幅（mm）<input type="range" id="outlineWidth" min="0" max="10" step="0.1" value="2.5"><output></output></label>
+    <label>フチの高さ（mm）<input type="range" id="outlineHeight" min="0" max="8" step="0.1" value="2"><output></output></label>
+
+    <label>台座<select id="baseShape">
+      <option value="circle">円（うちわ）</option>
+      <option value="rounded">角丸四角</option>
+      <option value="none">なし（文字だけ）</option>
+    </select></label>
+    <label>台座の厚み（mm）<input type="range" id="baseThickness" min="0.4" max="8" step="0.1" value="1.6"><output></output></label>
+    <label>キルト模様の深さ（mm）<input type="range" id="quilt" min="0" max="1.5" step="0.05" value="0.35"><output></output></label>
+    <label>キルトの間隔（mm）<input type="range" id="quiltPitch" min="4" max="30" step="0.5" value="11"><output></output></label>
+
+    <label>メッシュ解像度<select id="resolution">
+      <option value="256">低（速い）</option>
+      <option value="384" selected>標準</option>
+      <option value="512">高</option>
+      <option value="768">最高（重い）</option>
+    </select></label>
+  </section>
+
+  <section class="panel preview-panel">
+    <h2>3. プレビューと書き出し</h2>
+    <canvas id="preview" width="512" height="512"></canvas>
+    <div class="actions">
+      <button id="download" class="primary">STLをダウンロード</button>
+      <button id="downloadPng">プレビュー画像を保存</button>
+    </div>
+    <p id="status" class="status">準備中…</p>
+  </section>
+</main>
+
+<footer>
+  <p>すべてブラウザ内で処理されます。ファイルはどこにもアップロードされません。</p>
+</footer>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
