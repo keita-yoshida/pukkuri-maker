@@ -35,7 +35,7 @@ function signedArea(poly) {
  * corner, ... Returns the inside polygons (two of them for a saddle whose
  * centre is outside).
  */
-function clipCell(phi, hs, x0, x1, y0, y1) {
+function clipCell(phi, hs, x0, x1, y0, y1, edgeHeight) {
   const inside = [phi[0] > 0, phi[1] > 0, phi[2] > 0, phi[3] > 0];
   const count = inside.reduce((a, b) => a + (b ? 1 : 0), 0);
   if (count === 0) return [];
@@ -54,7 +54,11 @@ function clipCell(phi, hs, x0, x1, y0, y1) {
       poly.push({
         x: cx[k] + (cx[k2] - cx[k]) * t,
         y: cy[k] + (cy[k2] - cy[k]) * t,
-        z: hs[k] + (hs[k2] - hs[k]) * t,
+        // Every surface here meets the outline at the same height -- the
+        // minimum thickness. Interpolating between grid samples instead makes
+        // the rim jump around by whatever the shoulder happened to be doing
+        // where the crossing fell, which reads as a ragged edge.
+        z: edgeHeight,
       });
     }
   }
@@ -85,7 +89,7 @@ function clipCell(phi, hs, x0, x1, y0, y1) {
  * @param {(ax,ay,az,bx,by,bz,cx,cy,cz,kind)=>void} emit
  * @returns {number} triangle count
  */
-export function emitTriangles({ height, phi, n, mmPerPx }, emit) {
+export function emitTriangles({ height, phi, n, mmPerPx, edgeHeight = 0 }, emit) {
   const cells = n - 1;
   const px = (x) => (x - n / 2) * mmPerPx;
   const py = (y) => (n / 2 - y) * mmPerPx;
@@ -106,7 +110,7 @@ export function emitTriangles({ height, phi, n, mmPerPx }, emit) {
 
       const x0 = px(x), x1 = px(x + 1);
       const y0 = py(y), y1 = py(y + 1);
-      const polys = clipCell(cellPhi, cellH, x0, x1, y0, y1);
+      const polys = clipCell(cellPhi, cellH, x0, x1, y0, y1, edgeHeight);
 
       for (const poly of polys) {
         if (poly.length < 3) continue;

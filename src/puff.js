@@ -33,37 +33,6 @@ function domeLayer(phi, height, radiusPx) {
 }
 
 /**
- * The mesher interpolates heights across the outline, so it needs sane values
- * just outside it too — otherwise the surface dives to zero at the contact
- * line and the edge comes out as a knife.
- */
-function extendOutward(height, phi, n, passes) {
-  const out = Float32Array.from(height);
-  const known = maskFrom(phi);
-  for (let pass = 0; pass < passes; pass++) {
-    const next = Uint8Array.from(known);
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        const i = y * n + x;
-        if (known[i]) continue;
-        let best = 0;
-        let found = false;
-        if (x > 0 && known[i - 1]) { best = Math.max(best, out[i - 1]); found = true; }
-        if (x < n - 1 && known[i + 1]) { best = Math.max(best, out[i + 1]); found = true; }
-        if (y > 0 && known[i - n]) { best = Math.max(best, out[i - n]); found = true; }
-        if (y < n - 1 && known[i + n]) { best = Math.max(best, out[i + n]); found = true; }
-        if (found) {
-          out[i] = best;
-          next[i] = 1;
-        }
-      }
-    }
-    known.set(next);
-  }
-  return out;
-}
-
-/**
  * @param {Float32Array} coverage artwork coverage 0..1, n x n
  * @returns {{height: Float32Array, phi: Float32Array, solid: Uint8Array, n, mmPerPx}}
  */
@@ -134,5 +103,5 @@ export function buildHeightField(coverage, n, opts) {
   for (let i = 0; i < height.length; i++) {
     if (solid[i] && height[i] < floorMM) height[i] = floorMM;
   }
-  return { height: extendOutward(height, phi, n, 3), phi, solid, n, mmPerPx };
+  return { height, phi, solid, n, mmPerPx, edgeHeight: floorMM };
 }

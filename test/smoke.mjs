@@ -52,6 +52,29 @@ assert.equal(grown[26 * n + 64], 0, 'dilation stops past its radius');
     `low capillary length flattens wide areas (${flatness(runny).toFixed(2)} vs ${flatness(springy).toFixed(2)})`);
 }
 
+// --- no pixel-scale ripple -------------------------------------------------
+// Red-black sweeps trade the odd/even lattices' difference away at ~0.998 per
+// sweep for this operator, so anything checkerboard-shaped that enters (a
+// block-copied pyramid upsample, say) survives to the print as a fine ripple.
+{
+  const disc = new Uint8Array(n * n);
+  const C = n / 2 - 0.5;
+  const R = n * 0.3;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) disc[y * n + x] = Math.hypot(x - C, y - C) <= R ? 1 : 0;
+  }
+  const h = solveCapillary(disc, n, { mmPerPx: 90 / n, capillary: 2.5, peak: 4 });
+  let worst = 0;
+  for (let y = 2; y < n - 2; y++) {
+    for (let x = 2; x < n - 2; x++) {
+      if (Math.hypot(x - C, y - C) > R - 6) continue;
+      const i = y * n + x;
+      worst = Math.max(worst, Math.abs(h[i] - (h[i - 1] + h[i + 1] + h[i - n] + h[i + n]) / 4));
+    }
+  }
+  assert.ok(worst < 0.02, `no pixel-scale ripple, worst ${worst.toFixed(4)} mm`);
+}
+
 // --- height field ---------------------------------------------------------
 const opts = {
   mode: 'surface', sizeMM: 90, letterHeight: 4, letterRadius: 4,
@@ -102,6 +125,22 @@ const bare = buildHeightField(square, n, { ...opts, baseShape: 'none', outlineWi
 assert.equal(bare.solid[0], 0, 'nothing outside the letters');
 const bareMesh = buildMesh(bare);
 assert.equal(countBadEdges(bareMesh.buffer, bareMesh.triangles), 0, 'letters-only mesh is closed');
+
+// --- the rim sits at one height -------------------------------------------
+// Every surface meets the outline at the minimum thickness, so a disc's rim
+// must come out dead level. Interpolating it from grid samples instead varies
+// with wherever the crossing lands on the shoulder, which reads as ragged.
+{
+  const rimField = buildHeightField(square, n, { ...opts, baseShape: 'none', outlineWidth: 0 });
+  let lo = Infinity;
+  let hi = -Infinity;
+  emitTriangles(rimField, (ax, ay, az, bx, by, bz, cx, cy, cz, kind) => {
+    if (kind !== WALL) return;
+    for (const z of [az, bz, cz]) if (z > 0) { lo = Math.min(lo, z); hi = Math.max(hi, z); }
+  });
+  assert.equal(lo, hi, `rim is level (${lo} .. ${hi})`);
+  assert.equal(lo, rimField.edgeHeight, 'rim sits at the minimum thickness');
+}
 
 // --- sub-pixel outline ----------------------------------------------------
 // A disc rasterized with antialiasing: the mesher must place its wall vertices

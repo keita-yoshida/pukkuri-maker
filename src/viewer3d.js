@@ -104,7 +104,7 @@ function coarsen(field, maxN) {
       f[y * m + x] = phi[src] / step;
     }
   }
-  return { height: h, solid: s, phi: f, n: m, mmPerPx: mmPerPx * step };
+  return { height: h, solid: s, phi: f, n: m, mmPerPx: mmPerPx * step, edgeHeight: field.edgeHeight };
 }
 
 function getContext(canvas) {

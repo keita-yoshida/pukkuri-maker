@@ -34,42 +34,91 @@ function downsampleMask(mask, n) {
   return out;
 }
 
+/**
+ * Bilinear, not nearest-neighbour: block-copying a coarse level injects
+ * pixel-scale steps, and the odd/even lattices of a red-black sweep only trade
+ * their difference away at ~0.998 per sweep for this operator — so anything
+ * checkerboard-shaped that gets in here stays in, and lands on the print as a
+ * fine ripple.
+ */
 function upsample(h, n, fineMask, fineN) {
   const out = new Float32Array(fineN * fineN);
+  const sample = (x, y) => h[Math.min(n - 1, Math.max(0, y)) * n + Math.min(n - 1, Math.max(0, x))];
   for (let y = 0; y < fineN; y++) {
     for (let x = 0; x < fineN; x++) {
       const i = y * fineN + x;
       if (!fineMask[i]) continue;
-      const cx = Math.min(n - 1, x >> 1);
-      const cy = Math.min(n - 1, y >> 1);
-      out[i] = h[cy * n + cx];
+      const fx = (x - 0.5) / 2;
+      const fy = (y - 0.5) / 2;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy);
+      const tx = fx - x0, ty = fy - y0;
+      const top = sample(x0, y0) * (1 - tx) + sample(x0 + 1, y0) * tx;
+      const bot = sample(x0, y0 + 1) * (1 - tx) + sample(x0 + 1, y0 + 1) * tx;
+      out[i] = top * (1 - ty) + bot * ty;
     }
   }
   return out;
 }
 
-/** Metric coefficient 1/√(1+|∇h|²), lagged one iteration behind h. */
-function slopeCoefficients(h, mask, n, dx) {
-  const a = new Float32Array(n * n);
+/**
+ * One [1 2 1] pass over pixels that are entirely surrounded by liquid. Red-black
+ * sweeps cannot remove an odd/even split on their own, and this kernel is zero
+ * exactly on it. Interior only, so the contact line is left where it is.
+ */
+function despeckle(h, mask, n) {
+  const tmp = Float32Array.from(h);
+  const interior = (i, x, y) => x > 0 && y > 0 && x < n - 1 && y < n - 1
+    && mask[i - 1] && mask[i + 1] && mask[i - n] && mask[i + n];
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       const i = y * n + x;
-      if (!mask[i]) continue;
-      const hl = x > 0 && mask[i - 1] ? h[i - 1] : 0;
-      const hr = x < n - 1 && mask[i + 1] ? h[i + 1] : 0;
-      const hu = y > 0 && mask[i - n] ? h[i - n] : 0;
-      const hd = y < n - 1 && mask[i + n] ? h[i + n] : 0;
-      const gx = (hr - hl) / (2 * dx);
-      const gy = (hd - hu) / (2 * dx);
-      a[i] = 1 / Math.sqrt(1 + gx * gx + gy * gy);
+      if (!mask[i] || !interior(i, x, y)) continue;
+      tmp[i] = (h[i - 1] + h[i + 1] + 2 * h[i]) / 4;
     }
   }
-  return a;
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const i = y * n + x;
+      if (!mask[i] || !interior(i, x, y)) continue;
+      h[i] = (tmp[i - n] + tmp[i + n] + 2 * tmp[i]) / 4;
+    }
+  }
+}
+
+/**
+ * Metric coefficients 1/√(1+|∇h|²), lagged one iteration behind h and sampled
+ * on the *faces* between grid points.
+ *
+ * Sampling them at grid points with central differences decouples the odd and
+ * even lattices — each converges to its own answer and the surface ends up with
+ * a one-pixel checkerboard ripple baked in (~0.03mm, and finer but never gone
+ * at higher resolution). Face-centred differences couple neighbours directly.
+ */
+function faceCoefficients(h, mask, n, dx, aX, aY) {
+  const H = (x, y) => {
+    if (x < 0 || y < 0 || x >= n || y >= n) return 0;
+    const i = y * n + x;
+    return mask[i] ? h[i] : 0;
+  };
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const i = y * n + x;
+      // Face towards +x: gradient across it, plus the transverse slope averaged
+      // over the two samples it separates.
+      const gx = (H(x + 1, y) - H(x, y)) / dx;
+      const gxT = (H(x, y + 1) + H(x + 1, y + 1) - H(x, y - 1) - H(x + 1, y - 1)) / (4 * dx);
+      aX[i] = 1 / Math.sqrt(1 + gx * gx + gxT * gxT);
+      // Face towards +y.
+      const gy = (H(x, y + 1) - H(x, y)) / dx;
+      const gyT = (H(x + 1, y) + H(x + 1, y + 1) - H(x - 1, y) - H(x - 1, y + 1)) / (4 * dx);
+      aY[i] = 1 / Math.sqrt(1 + gy * gy + gyT * gyT);
+    }
+  }
 }
 
 const OMEGA = 1.6; // over-relaxation; the nonlinearity keeps us below 2
 
-function sweep(h, a, mask, n, dx, invLc2, P) {
+function sweep(h, aX, aY, mask, n, dx, invLc2, P) {
   const inv = 1 / (dx * dx);
   let maxH = 0;
   for (let color = 0; color < 2; color++) {
@@ -77,14 +126,17 @@ function sweep(h, a, mask, n, dx, invLc2, P) {
       for (let x = (y + color) & 1; x < n; x += 2) {
         const i = y * n + x;
         if (!mask[i]) continue;
-        const ai = a[i];
-        let sumA = 0;
-        let sumAH = 0;
         // Neighbours outside the mask are the pinned contact line: h = 0.
-        if (x > 0) { const f = mask[i - 1] ? (ai + a[i - 1]) * 0.5 : ai; sumA += f; if (mask[i - 1]) sumAH += f * h[i - 1]; } else sumA += ai;
-        if (x < n - 1) { const f = mask[i + 1] ? (ai + a[i + 1]) * 0.5 : ai; sumA += f; if (mask[i + 1]) sumAH += f * h[i + 1]; } else sumA += ai;
-        if (y > 0) { const f = mask[i - n] ? (ai + a[i - n]) * 0.5 : ai; sumA += f; if (mask[i - n]) sumAH += f * h[i - n]; } else sumA += ai;
-        if (y < n - 1) { const f = mask[i + n] ? (ai + a[i + n]) * 0.5 : ai; sumA += f; if (mask[i + n]) sumAH += f * h[i + n]; } else sumA += ai;
+        const aL = x > 0 ? aX[i - 1] : aX[i];
+        const aR = x < n - 1 ? aX[i] : aX[i - 1];
+        const aU = y > 0 ? aY[i - n] : aY[i];
+        const aD = y < n - 1 ? aY[i] : aY[i - n];
+        const sumA = aL + aR + aU + aD;
+        let sumAH = 0;
+        if (x > 0 && mask[i - 1]) sumAH += aL * h[i - 1];
+        if (x < n - 1 && mask[i + 1]) sumAH += aR * h[i + 1];
+        if (y > 0 && mask[i - n]) sumAH += aU * h[i - n];
+        if (y < n - 1 && mask[i + n]) sumAH += aD * h[i + n];
 
         const next = (sumAH * inv + P) / (sumA * inv + invLc2);
         const v = h[i] + OMEGA * (next - h[i]);
@@ -98,10 +150,12 @@ function sweep(h, a, mask, n, dx, invLc2, P) {
 
 function relax(h, mask, n, dx, invLc2, P, sweeps) {
   let maxH = 0;
-  let a = slopeCoefficients(h, mask, n, dx);
+  const aX = new Float32Array(n * n);
+  const aY = new Float32Array(n * n);
+  faceCoefficients(h, mask, n, dx, aX, aY);
   for (let s = 0; s < sweeps; s++) {
-    if (s % 4 === 3) a = slopeCoefficients(h, mask, n, dx);
-    maxH = sweep(h, a, mask, n, dx, invLc2, P);
+    if (s % 4 === 3) faceCoefficients(h, mask, n, dx, aX, aY);
+    maxH = sweep(h, aX, aY, mask, n, dx, invLc2, P);
   }
   return maxH;
 }
@@ -157,6 +211,7 @@ export function solveCapillary(mask, n, { mmPerPx, capillary, peak }) {
       relax(h, level.mask, level.n, dx, invLc2, P, 40);
       P = fitPressure(h, level.mask, level.n, dx, invLc2, peak, 6, 4);
       relax(h, level.mask, level.n, dx, invLc2, P, 12);
+      despeckle(h, level.mask, level.n);
     }
   }
 
