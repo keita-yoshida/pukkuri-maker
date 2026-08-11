@@ -34,7 +34,8 @@ assert.equal(grown[26 * n + 64], 0, 'dilation stops past its radius');
     for (let x = 60; x < 100; x++) m[y * n + x] = 1;     // fat, 40px
   }
   const mmPerPx = 90 / n;
-  const h = solveCapillary(m, n, { mmPerPx, capillary: 2.5, peak: 4 });
+  const phiM = signedFromCoverage(m, n);
+  const h = solveCapillary(phiM, n, { mmPerPx, capillary: 2.5, peak: 4 });
   const thin = h[64 * n + 23];
   const fat = h[64 * n + 80];
   assert.ok(Math.abs(fat - 4) < 0.25, `peak lands on the requested height, got ${fat.toFixed(2)}`);
@@ -45,8 +46,8 @@ assert.equal(grown[26 * n + 64], 0, 'dilation stops past its radius');
 
   // Small capillary length = runny: the fat stroke flattens into a plateau, so
   // its centre and a point well inside its edge end up at nearly one height.
-  const runny = solveCapillary(m, n, { mmPerPx, capillary: 0.8, peak: 4 });
-  const springy = solveCapillary(m, n, { mmPerPx, capillary: 12, peak: 4 });
+  const runny = solveCapillary(phiM, n, { mmPerPx, capillary: 0.8, peak: 4 });
+  const springy = solveCapillary(phiM, n, { mmPerPx, capillary: 12, peak: 4 });
   const flatness = (f) => f[64 * n + 68] / f[64 * n + 80];
   assert.ok(flatness(runny) > flatness(springy),
     `low capillary length flattens wide areas (${flatness(runny).toFixed(2)} vs ${flatness(springy).toFixed(2)})`);
@@ -63,7 +64,7 @@ assert.equal(grown[26 * n + 64], 0, 'dilation stops past its radius');
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) disc[y * n + x] = Math.hypot(x - C, y - C) <= R ? 1 : 0;
   }
-  const h = solveCapillary(disc, n, { mmPerPx: 90 / n, capillary: 2.5, peak: 4 });
+  const h = solveCapillary(signedFromCoverage(disc, n), n, { mmPerPx: 90 / n, capillary: 2.5, peak: 4 });
   let worst = 0;
   for (let y = 2; y < n - 2; y++) {
     for (let x = 2; x < n - 2; x++) {
@@ -73,6 +74,57 @@ assert.equal(grown[26 * n + 64], 0, 'dilation stops past its radius');
     }
   }
   assert.ok(worst < 0.02, `no pixel-scale ripple, worst ${worst.toFixed(4)} mm`);
+}
+
+// --- the contact line is not pixelated -------------------------------------
+// On a disc the solved surface must be the same all the way round at a given
+// distance from the contact line. It is not, if the solver's domain is a
+// thresholded mask: every point's stencil is then cut differently and points
+// equally deep come out up to 0.5mm apart. That ridge hides under the
+// silhouette until an outline band puts it in the middle of a surface, which
+// is exactly when it becomes the most visible artefact on the print.
+{
+  const big = 384;
+  const C = big / 2 - 0.5;
+  const R = big * 0.28;
+  const cov = new Float32Array(big * big);
+  for (let y = 0; y < big; y++) {
+    for (let x = 0; x < big; x++) {
+      let hits = 0;
+      for (let sy = 0; sy < 4; sy++) {
+        for (let sx = 0; sx < 4; sx++) {
+          if (Math.hypot(x - C + (sx + 0.5) / 4 - 0.5, y - C + (sy + 0.5) / 4 - 0.5) <= R) hits++;
+        }
+      }
+      cov[y * big + x] = hits / 16;
+    }
+  }
+  const phi = signedFromCoverage(cov, big);
+  const solved = solveCapillary(phi, big, { mmPerPx: 90 / big, capillary: 2.5, peak: 4 });
+
+  const bilinear = (fx, fy) => {
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const g = (x, y) => solved[y * big + x];
+    return (g(x0, y0) * (1 - tx) + g(x0 + 1, y0) * tx) * (1 - ty)
+         + (g(x0, y0 + 1) * (1 - tx) + g(x0 + 1, y0 + 1) * tx) * ty;
+  };
+  for (const [depth, limit] of [[2, 0.12], [4, 0.05]]) {
+    const rr = R - depth;
+    const steps = Math.round(2 * Math.PI * rr);
+    const vals = [];
+    for (let a = 0; a < steps; a++) {
+      const th = (a / steps) * 2 * Math.PI;
+      vals.push(bilinear(C + rr * Math.cos(th), C + rr * Math.sin(th)));
+    }
+    const range = Math.max(...vals) - Math.min(...vals);
+    let step = 0;
+    for (let i = 0; i < vals.length; i++) step = Math.max(step, Math.abs(vals[i] - vals[(i + 1) % vals.length]));
+    assert.ok(range < limit, `${depth}px in, the ridge is even (range ${range.toFixed(3)} mm)`);
+    assert.ok(step < 0.02, `${depth}px in, no pixel-scale steps (${step.toFixed(4)} mm)`);
+  }
 }
 
 // --- height field ---------------------------------------------------------

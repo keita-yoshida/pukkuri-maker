@@ -20,18 +20,36 @@
 // coarse levels find the pressure cheaply and hand a good starting guess down
 // to the fine levels.
 
-/** Half the resolution, keeping a pixel when at least half its children are set. */
-function downsampleMask(mask, n) {
+/** Half the resolution. φ is in pixels, so distances halve with the grid. */
+function downsamplePhi(phi, n) {
   const m = n >> 1;
-  const out = new Uint8Array(m * m);
+  const out = new Float32Array(m * m);
   for (let y = 0; y < m; y++) {
     for (let x = 0; x < m; x++) {
-      const s = mask[2 * y * n + 2 * x] + mask[2 * y * n + 2 * x + 1]
-              + mask[(2 * y + 1) * n + 2 * x] + mask[(2 * y + 1) * n + 2 * x + 1];
-      out[y * m + x] = s >= 2 ? 1 : 0;
+      const s = phi[2 * y * n + 2 * x] + phi[2 * y * n + 2 * x + 1]
+              + phi[(2 * y + 1) * n + 2 * x] + phi[(2 * y + 1) * n + 2 * x + 1];
+      out[y * m + x] = s / 8;
     }
   }
   return out;
+}
+
+function maskFromPhi(phi) {
+  const mask = new Uint8Array(phi.length);
+  for (let i = 0; i < mask.length; i++) mask[i] = phi[i] > 0 ? 1 : 0;
+  return mask;
+}
+
+/**
+ * How far the contact line sits from sample i towards a neighbour that is
+ * outside, as a fraction of the grid step (Shortley-Weller). Rounding this up
+ * to a whole cell is what makes the solved surface follow a pixelated outline,
+ * which shows as a ragged ridge wherever that outline is not also the
+ * silhouette -- most visibly with an outline band around the letters.
+ */
+function cut(phiIn, phiOut) {
+  const t = phiIn / (phiIn - phiOut);
+  return t < 0.15 ? 0.15 : (t > 1 ? 1 : t);
 }
 
 /**
@@ -118,7 +136,7 @@ function faceCoefficients(h, mask, n, dx, aX, aY) {
 
 const OMEGA = 1.6; // over-relaxation; the nonlinearity keeps us below 2
 
-function sweep(h, aX, aY, mask, n, dx, invLc2, P) {
+function sweep(h, aX, aY, mask, phi, n, dx, invLc2, P) {
   const inv = 1 / (dx * dx);
   let maxH = 0;
   for (let color = 0; color < 2; color++) {
@@ -127,10 +145,17 @@ function sweep(h, aX, aY, mask, n, dx, invLc2, P) {
         const i = y * n + x;
         if (!mask[i]) continue;
         // Neighbours outside the mask are the pinned contact line: h = 0.
-        const aL = x > 0 ? aX[i - 1] : aX[i];
-        const aR = x < n - 1 ? aX[i] : aX[i - 1];
-        const aU = y > 0 ? aY[i - n] : aY[i];
-        const aD = y < n - 1 ? aY[i] : aY[i - n];
+        // Faces towards a neighbour outside the liquid are shortened to where
+        // the contact line actually is, so h = 0 is applied there and not a
+        // whole cell away.
+        let aL = x > 0 ? aX[i - 1] : aX[i];
+        let aR = x < n - 1 ? aX[i] : aX[i - 1];
+        let aU = y > 0 ? aY[i - n] : aY[i];
+        let aD = y < n - 1 ? aY[i] : aY[i - n];
+        if (x > 0 && !mask[i - 1]) aL /= cut(phi[i], phi[i - 1]);
+        if (x < n - 1 && !mask[i + 1]) aR /= cut(phi[i], phi[i + 1]);
+        if (y > 0 && !mask[i - n]) aU /= cut(phi[i], phi[i - n]);
+        if (y < n - 1 && !mask[i + n]) aD /= cut(phi[i], phi[i + n]);
         const sumA = aL + aR + aU + aD;
         let sumAH = 0;
         if (x > 0 && mask[i - 1]) sumAH += aL * h[i - 1];
@@ -148,14 +173,14 @@ function sweep(h, aX, aY, mask, n, dx, invLc2, P) {
   return maxH;
 }
 
-function relax(h, mask, n, dx, invLc2, P, sweeps) {
+function relax(h, mask, phi, n, dx, invLc2, P, sweeps) {
   let maxH = 0;
   const aX = new Float32Array(n * n);
   const aY = new Float32Array(n * n);
   faceCoefficients(h, mask, n, dx, aX, aY);
   for (let s = 0; s < sweeps; s++) {
     if (s % 4 === 3) faceCoefficients(h, mask, n, dx, aX, aY);
-    maxH = sweep(h, aX, aY, mask, n, dx, invLc2, P);
+    maxH = sweep(h, aX, aY, mask, phi, n, dx, invLc2, P);
   }
   return maxH;
 }
@@ -165,20 +190,75 @@ function relax(h, mask, n, dx, invLc2, P, sweeps) {
  * `h` is carried across probes as a warm start, which is why a handful of
  * sweeps per probe is enough.
  */
-function fitPressure(h, mask, n, dx, invLc2, target, probes, sweeps) {
+function fitPressure(h, mask, phi, n, dx, invLc2, target, probes, sweeps) {
   let lo = 0;
   let hi = Math.max(1e-4, target * invLc2) || 1e-4;
-  for (let i = 0; i < 40 && relax(h, mask, n, dx, invLc2, hi, sweeps) < target; i++) hi *= 2;
+  for (let i = 0; i < 40 && relax(h, mask, phi, n, dx, invLc2, hi, sweeps) < target; i++) hi *= 2;
   for (let i = 0; i < probes; i++) {
     const mid = (lo + hi) / 2;
-    if (relax(h, mask, n, dx, invLc2, mid, sweeps) < target) lo = mid;
+    if (relax(h, mask, phi, n, dx, invLc2, mid, sweeps) < target) lo = mid;
     else hi = mid;
   }
   return (lo + hi) / 2;
 }
 
 /**
- * @param {Uint8Array} mask   liquid footprint, n x n
+ * Smooth h *along* the level sets of φ, in a band around the contact line.
+ *
+ * Near the outline the discretisation cannot be made to agree with itself:
+ * points the same distance from the contact line come out up to 0.4mm apart,
+ * because each one's stencil is cut by the outline differently. That error
+ * lives entirely in the direction along the contour -- the radial profile is
+ * fine -- so smoothing along φ's level sets removes it without touching the
+ * shape of the rise. Away from the band the solution is already smooth and is
+ * left alone.
+ */
+function smoothAlongContour(h, phi, n, bandPx, passes) {
+  const sample = (fx, fy, fallback) => {
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    if (x0 < 0 || y0 < 0 || x0 >= n - 1 || y0 >= n - 1) return fallback;
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const g = (x, y) => {
+      const i = y * n + x;
+      return phi[i] > 0 ? h[i] : fallback;
+    };
+    const top = g(x0, y0) * (1 - tx) + g(x0 + 1, y0) * tx;
+    const bot = g(x0, y0 + 1) * (1 - tx) + g(x0 + 1, y0 + 1) * tx;
+    return top * (1 - ty) + bot * ty;
+  };
+
+  const next = new Float32Array(h.length);
+  for (let pass = 0; pass < passes; pass++) {
+    next.set(h);
+    for (let y = 1; y < n - 1; y++) {
+      for (let x = 1; x < n - 1; x++) {
+        const i = y * n + x;
+        const depth = phi[i];
+        if (depth <= 0 || depth > bandPx) continue;
+        // Fade the smoothing out towards the far edge of the band; stopping it
+        // abruptly leaves a kink along that contour.
+        const t = depth / bandPx;
+        const weight = t < 0.6 ? 1 : 1 - (t - 0.6) / 0.4;
+        // Tangent = perpendicular to ∇φ.
+        const gx = (phi[i + 1] - phi[i - 1]) / 2;
+        const gy = (phi[i + n] - phi[i - n]) / 2;
+        const len = Math.hypot(gx, gy);
+        if (len < 1e-6) continue;
+        const tx = -gy / len;
+        const ty = gx / len;
+        const a = sample(x + tx, y + ty, h[i]);
+        const b = sample(x - tx, y - ty, h[i]);
+        next[i] = h[i] + 0.35 * weight * (a + b - 2 * h[i]);
+      }
+    }
+    h.set(next);
+  }
+}
+
+/**
+ * @param {Float32Array} phi   liquid footprint as a signed field, n x n
  * @param {number} n          grid size
  * @param {object} opts
  * @param {number} opts.mmPerPx   grid spacing in mm
@@ -186,14 +266,15 @@ function fitPressure(h, mask, n, dx, invLc2, target, probes, sweeps) {
  * @param {number} opts.peak      target height of the tallest point, mm
  * @returns {Float32Array} height in mm, 0 outside the mask
  */
-export function solveCapillary(mask, n, { mmPerPx, capillary, peak }) {
+export function solveCapillary(phi, n, { mmPerPx, capillary, peak }) {
   const invLc2 = 1 / (capillary * capillary);
 
   // Build the pyramid, coarsest first.
-  const levels = [{ mask, n }];
+  const levels = [{ phi, mask: maskFromPhi(phi), n }];
   while (levels[0].n > 48) {
     const top = levels[0];
-    levels.unshift({ mask: downsampleMask(top.mask, top.n), n: top.n >> 1 });
+    const coarse = downsamplePhi(top.phi, top.n);
+    levels.unshift({ phi: coarse, mask: maskFromPhi(coarse), n: top.n >> 1 });
   }
 
   let h = new Float32Array(levels[0].n * levels[0].n);
@@ -205,13 +286,17 @@ export function solveCapillary(mask, n, { mmPerPx, capillary, peak }) {
 
     const finest = li === levels.length - 1;
     if (!finest) {
-      P = fitPressure(h, level.mask, level.n, dx, invLc2, peak, 14, 6);
+      P = fitPressure(h, level.mask, level.phi, level.n, dx, invLc2, peak, 14, 6);
     } else {
       // The pressure is already grid-converged; spend the budget on the shape.
-      relax(h, level.mask, level.n, dx, invLc2, P, 40);
-      P = fitPressure(h, level.mask, level.n, dx, invLc2, peak, 6, 4);
-      relax(h, level.mask, level.n, dx, invLc2, P, 12);
+      relax(h, level.mask, level.phi, level.n, dx, invLc2, P, 40);
+      P = fitPressure(h, level.mask, level.phi, level.n, dx, invLc2, peak, 6, 4);
+      // The finest level gets a longer polish than the coarse ones: the deep
+      // part of the surface is still converging at 12 sweeps, and that shows up
+      // as an uneven ridge just like the boundary-layer error does.
+      relax(h, level.mask, level.phi, level.n, dx, invLc2, P, 60);
       despeckle(h, level.mask, level.n);
+      smoothAlongContour(h, level.phi, level.n, 12, 40);
     }
   }
 

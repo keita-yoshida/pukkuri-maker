@@ -24,11 +24,25 @@ function dome(d, radius, height) {
   return height * Math.sqrt(1 - (1 - t) * (1 - t));
 }
 
-/** Arc-of-a-circle layer over a shape, in mm. φ doubles as the inside distance. */
+/**
+ * Arc-of-a-circle layer over a shape, in mm. φ doubles as the inside distance.
+ *
+ * The arc stands vertically at d = 0, and infinite slope is not something a
+ * grid can hold: φ is only accurate to ~0.1px, and near the edge the arc turns
+ * that into a ~0.2mm swing in height, which shows up as a ragged ridge running
+ * along every outline. Inside the first cell the profile is a straight ramp
+ * instead, which caps the amplification at one cell's worth of rise. At print
+ * scale this only rounds the very lip of the bead.
+ */
 function domeLayer(phi, height, radiusPx) {
   const out = new Float32Array(phi.length);
   const r = Math.max(1, radiusPx);
-  for (let i = 0; i < out.length; i++) out[i] = dome(phi[i], r, height);
+  const lip = Math.min(1, r);           // one cell
+  const lipHeight = dome(lip, r, height);
+  for (let i = 0; i < out.length; i++) {
+    const d = phi[i];
+    out[i] = d <= 0 ? 0 : (d < lip ? lipHeight * (d / lip) : dome(d, r, height));
+  }
   return out;
 }
 
@@ -87,7 +101,7 @@ export function buildHeightField(coverage, n, opts) {
   if (mode === 'classic') {
     top = domeLayer(liquid, letterHeight, toPx(letterRadius));
   } else {
-    top = solveCapillary(maskFrom(liquid), n, { mmPerPx, capillary, peak: letterHeight });
+    top = solveCapillary(liquid, n, { mmPerPx, capillary, peak: letterHeight });
     if (floorBoost > 0) {
       // Physically honest liquid leaves thin strokes very low; this lifts them
       // back toward the classic dome so fine text stays printable.
