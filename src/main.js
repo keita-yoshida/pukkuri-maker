@@ -16,6 +16,7 @@ let pending = null;
 
 const numeric = [
   'bold', 'tracking', 'dxfStroke', 'size', 'letterHeight', 'letterRadius',
+  'capillary', 'meniscus', 'floorBoost', 'minThickness',
   'outlineWidth', 'outlineHeight', 'baseThickness', 'quilt', 'quiltPitch',
 ];
 
@@ -23,6 +24,7 @@ function readOptions() {
   const opts = {};
   for (const id of numeric) opts[id] = parseFloat($(id).value);
   opts.sizeMM = opts.size;
+  opts.mode = $('mode').value;
   opts.baseShape = $('baseShape').value;
   opts.resolution = parseInt($('resolution').value, 10);
   opts.text = $('text').value;
@@ -70,12 +72,14 @@ async function regenerate() {
       mask = dilate(mask, n, n, (opts.bold / opts.sizeMM) * n);
     }
 
+    const started = performance.now();
     lastField = buildHeightField(mask, n, opts);
+    const elapsed = Math.round(performance.now() - started);
     renderPreview(previewCanvas, lastField, { base: [196, 181, 253], letter: [124, 58, 237] });
 
     let maxH = 0;
     for (const h of lastField.height) if (h > maxH) maxH = h;
-    statusEl.textContent = `${opts.sizeMM}×${opts.sizeMM} mm / 最大高さ ${maxH.toFixed(1)} mm`;
+    statusEl.textContent = `${opts.sizeMM}×${opts.sizeMM} mm / 最大高さ ${maxH.toFixed(1)} mm / ${elapsed} ms`;
   } catch (err) {
     console.error(err);
     statusEl.textContent = `エラー: ${err.message}`;

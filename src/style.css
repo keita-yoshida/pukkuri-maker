@@ -92,3 +92,18 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button:disabled { opacity: .5; cursor: progress; }
 .status { color: var(--muted); font-size: 13px; min-height: 1.2em; }
 footer { text-align: center; padding: 8px 20px 32px; color: var(--muted); font-size: 12px; }
+
+details {
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px 12px;
+  background: #fdfcff;
+}
+details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+  list-style-position: inside;
+}
+details[open] > summary { margin-bottom: 4px; }

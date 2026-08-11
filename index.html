@@ -52,21 +52,17 @@
 
   <section class="panel">
     <h2>2. ぷっくり具合</h2>
-    <label>全体サイズ（mm）<input type="range" id="size" min="30" max="200" step="1" value="90"><output></output></label>
-    <label>文字の高さ（mm）<input type="range" id="letterHeight" min="0.5" max="12" step="0.1" value="4"><output></output></label>
-    <label>丸まり幅（mm）<span class="hint-inline">小さいほど角ばる</span><input type="range" id="letterRadius" min="0.5" max="15" step="0.1" value="4"><output></output></label>
-
-    <label>フチ（縁取り）幅（mm）<input type="range" id="outlineWidth" min="0" max="10" step="0.1" value="2.5"><output></output></label>
-    <label>フチの高さ（mm）<input type="range" id="outlineHeight" min="0" max="8" step="0.1" value="2"><output></output></label>
-
-    <label>台座<select id="baseShape">
-      <option value="circle">円（うちわ）</option>
-      <option value="rounded">角丸四角</option>
-      <option value="none">なし（文字だけ）</option>
+    <label>盛り上がり方<select id="mode">
+      <option value="surface">表面張力（水・レジン風）</option>
+      <option value="classic">クラシック（円弧）</option>
     </select></label>
-    <label>台座の厚み（mm）<input type="range" id="baseThickness" min="0.4" max="8" step="0.1" value="1.6"><output></output></label>
-    <label>キルト模様の深さ（mm）<input type="range" id="quilt" min="0" max="1.5" step="0.05" value="0.35"><output></output></label>
-    <label>キルトの間隔（mm）<input type="range" id="quiltPitch" min="4" max="30" step="0.5" value="11"><output></output></label>
+    <label>全体サイズ（mm）<input type="range" id="size" min="30" max="200" step="1" value="90"><output></output></label>
+    <label>いちばん高い所（mm）<input type="range" id="letterHeight" min="0.5" max="12" step="0.1" value="4"><output></output></label>
+    <label>とろみ（mm）<span class="hint-inline">小さいと広い面が平ら、大きいと風船的</span><input type="range" id="capillary" min="0.5" max="12" step="0.1" value="2.5"><output></output></label>
+    <label>はみ出し（mm）<span class="hint-inline">液がフチから膨らむ量</span><input type="range" id="meniscus" min="0" max="2" step="0.05" value="0.3"><output></output></label>
+    <label>細い線の底上げ<span class="hint-inline">0で物理どおり</span><input type="range" id="floorBoost" min="0" max="1" step="0.05" value="0.35"><output></output></label>
+    <label>最小の厚み（mm）<input type="range" id="minThickness" min="0.3" max="4" step="0.1" value="0.8"><output></output></label>
+    <label>丸まり幅（mm）<span class="hint-inline">クラシック／底上げの丸み</span><input type="range" id="letterRadius" min="0.5" max="15" step="0.1" value="4"><output></output></label>
 
     <label>メッシュ解像度<select id="resolution">
       <option value="256">低（速い）</option>
@@ -76,8 +72,29 @@
     </select></label>
   </section>
 
+  <section class="panel">
+    <h2>3. オプション</h2>
+    <details>
+      <summary>フチ（縁取り）をつける</summary>
+      <label>フチの幅（mm）<input type="range" id="outlineWidth" min="0" max="10" step="0.1" value="0"><output></output></label>
+      <label>フチの高さ（mm）<input type="range" id="outlineHeight" min="0" max="8" step="0.1" value="1.5"><output></output></label>
+      <p class="hint">幅・高さのどちらかが 0 ならフチなしです。</p>
+    </details>
+    <details>
+      <summary>台座（うちわ土台）をつける</summary>
+      <label>形<select id="baseShape">
+        <option value="none" selected>なし（文字だけ）</option>
+        <option value="circle">円（うちわ）</option>
+        <option value="rounded">角丸四角</option>
+      </select></label>
+      <label>台座の厚み（mm）<input type="range" id="baseThickness" min="0.4" max="8" step="0.1" value="1.6"><output></output></label>
+      <label>キルト模様の深さ（mm）<input type="range" id="quilt" min="0" max="1.5" step="0.05" value="0.35"><output></output></label>
+      <label>キルトの間隔（mm）<input type="range" id="quiltPitch" min="4" max="30" step="0.5" value="11"><output></output></label>
+    </details>
+  </section>
+
   <section class="panel preview-panel">
-    <h2>3. プレビューと書き出し</h2>
+    <h2>4. プレビューと書き出し</h2>
     <canvas id="preview" width="512" height="512"></canvas>
     <div class="actions">
       <button id="download" class="primary">STLをダウンロード</button>
