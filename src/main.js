@@ -3,6 +3,7 @@ import { dilate } from './edt.js';
 import { buildHeightField } from './puff.js';
 import { buildMesh } from './mesh.js';
 import { renderPreview } from './preview.js';
+import { Viewer3D } from './viewer3d.js';
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $('status');
@@ -13,6 +14,15 @@ let svgText = null;
 let dxfText = null;
 let lastField = null;
 let pending = null;
+
+// The 3D view is the point of the preview; the flat shaded renderer is only a
+// fallback for machines without WebGL.
+let viewer = null;
+try {
+  viewer = new Viewer3D(previewCanvas);
+} catch (err) {
+  console.warn('3Dプレビューを使えないため平面表示にします:', err.message);
+}
 
 const numeric = [
   'bold', 'tracking', 'dxfStroke', 'size', 'letterHeight', 'letterRadius',
@@ -75,7 +85,8 @@ async function regenerate() {
     const started = performance.now();
     lastField = buildHeightField(mask, n, opts);
     const elapsed = Math.round(performance.now() - started);
-    renderPreview(previewCanvas, lastField, { base: [196, 181, 253], letter: [124, 58, 237] });
+    if (viewer) viewer.setField(lastField);
+    else renderPreview(previewCanvas, lastField, { base: [196, 181, 253], letter: [124, 58, 237] });
 
     let maxH = 0;
     for (const h of lastField.height) if (h > maxH) maxH = h;
@@ -124,6 +135,14 @@ $('download').addEventListener('click', async () => {
   } finally {
     button.disabled = false;
   }
+});
+
+$('viewTop').addEventListener('click', () => {
+  if (!viewer) return;
+  // Straight down, and square to the artwork so the text reads upright.
+  viewer.yaw = viewer.homeYaw;
+  viewer.pitch = Math.PI / 2 - 0.02;
+  viewer.render();
 });
 
 $('downloadPng').addEventListener('click', () => {

@@ -99,9 +99,13 @@
   <div class="stage">
   <section class="panel preview-panel">
     <h2>4. プレビューと書き出し</h2>
-    <canvas id="preview" width="512" height="512"></canvas>
+    <div class="viewport">
+      <canvas id="preview" width="512" height="512"></canvas>
+      <p class="viewhint">ドラッグで回転 / ホイールで拡大縮小 / ダブルクリックで初期位置</p>
+    </div>
     <div class="actions">
       <button id="download" class="primary">STLをダウンロード</button>
+      <button id="viewTop">真上から</button>
       <button id="downloadPng">プレビュー画像を保存</button>
     </div>
     <p id="status" class="status">準備中…</p>

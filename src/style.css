@@ -78,8 +78,19 @@ textarea { resize: vertical; }
 .tab.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .hidden { display: none; }
 .preview-panel { text-align: center; }
+.viewport { position: relative; }
+.viewhint {
+  position: absolute;
+  left: 0; right: 0; bottom: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  pointer-events: none;
+}
 #preview {
   width: 100%;
+  touch-action: none;
+  cursor: grab;
   max-width: min(100%, calc(100vh - 285px));
   aspect-ratio: 1;
   height: auto;
@@ -114,3 +125,5 @@ details > summary {
   list-style-position: inside;
 }
 details[open] > summary { margin-bottom: 4px; }
+
+#preview:active { cursor: grabbing; }
