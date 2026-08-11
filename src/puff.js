@@ -46,6 +46,44 @@ function domeLayer(phi, height, radiusPx) {
   return out;
 }
 
+/** One [1 2 1] blur pass, used to round the foot of the liquid. */
+function softenFoot(field, n) {
+  const tmp = new Float32Array(field.length);
+  const out = new Float32Array(field.length);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const i = y * n + x;
+      const l = x > 0 ? field[i - 1] : field[i];
+      const r = x < n - 1 ? field[i + 1] : field[i];
+      tmp[i] = (l + 2 * field[i] + r) / 4;
+    }
+  }
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const i = y * n + x;
+      const u = y > 0 ? tmp[i - n] : tmp[i];
+      const d = y < n - 1 ? tmp[i + n] : tmp[i];
+      out[i] = (u + 2 * tmp[i] + d) / 4;
+    }
+  }
+  return out;
+}
+
+/**
+ * Blended maximum: `max` with the corner rounded over a width of k mm.
+ *
+ * A hard max() between two surfaces leaves a crease, and the crease sits
+ * wherever they happen to cross — a contour whose position swings by ~0.15mm
+ * from pixel to pixel, which the eye reads as a stepped line running around
+ * every stroke. Rounding the join removes both the crease and the jitter, and
+ * a liquid would not have a crease there to begin with.
+ */
+function smoothMax(a, b, k) {
+  const d = Math.abs(a - b);
+  const m = a > b ? a : b;
+  return d >= k ? m : m + ((k - d) * (k - d)) / (4 * k);
+}
+
 /**
  * @param {Float32Array} coverage artwork coverage 0..1, n x n
  * @returns {{height: Float32Array, phi: Float32Array, solid: Uint8Array, n, mmPerPx}}
@@ -106,16 +144,23 @@ export function buildHeightField(coverage, n, opts) {
       // Physically honest liquid leaves thin strokes very low; this lifts them
       // back toward the classic dome so fine text stays printable.
       const floor = domeLayer(liquid, letterHeight * floorBoost, toPx(letterRadius));
-      for (let i = 0; i < top.length; i++) if (floor[i] > top[i]) top[i] = floor[i];
+      const k = Math.min(0.4, letterHeight * 0.15);
+      for (let i = 0; i < top.length; i++) top[i] = smoothMax(top[i], floor[i], k);
     }
   }
+  // The liquid meets the plate at its contact angle, which is a real crease --
+  // but a crease that runs diagonally across the grid gets rendered as a
+  // zigzag, since no vertex sits on it. Rounding its foot over about a cell
+  // turns it into a small fillet, which is what resin does anyway.
+  if (hasOutline || baseShape !== 'none') top = softenFoot(top, n);
   for (let i = 0; i < height.length; i++) height[i] += top[i];
 
   // A liquid surface tapers to nothing at the contact line, which does not
   // print, so every solid pixel gets at least this much material under it.
   const floorMM = Math.max(0.2, minThickness);
+  const floorBlend = Math.min(0.4, floorMM * 0.5);
   for (let i = 0; i < height.length; i++) {
-    if (solid[i] && height[i] < floorMM) height[i] = floorMM;
+    if (solid[i]) height[i] = smoothMax(height[i], floorMM, floorBlend);
   }
   return { height, phi, solid, n, mmPerPx, edgeHeight: floorMM };
 }

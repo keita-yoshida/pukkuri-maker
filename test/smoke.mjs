@@ -125,6 +125,31 @@ assert.equal(grown[26 * n + 64], 0, 'dilation stops past its radius');
     assert.ok(range < limit, `${depth}px in, the ridge is even (range ${range.toFixed(3)} mm)`);
     assert.ok(step < 0.02, `${depth}px in, no pixel-scale steps (${step.toFixed(4)} mm)`);
   }
+
+  // Layers joined with a plain max(), or a liquid foot left at its full contact
+  // angle, leave a crease. A crease running diagonally across the grid has no
+  // vertices on it, so it is rendered as a zigzag -- the stepped line that
+  // shows up around every stroke once an outline band is on.
+  const creaseField = buildHeightField(cov, big, {
+    mode: 'surface', sizeMM: 90, letterHeight: 4, letterRadius: 4, capillary: 2.5,
+    meniscus: 0.3, floorBoost: 0.35, minThickness: 0.8, outlineWidth: 2.5,
+    outlineHeight: 1.5, baseShape: 'none', baseThickness: 1.6, quilt: 0, quiltPitch: 11,
+  });
+  const mmPerPx = 90 / big;
+  const row = Math.round(C);
+  const profile = [];
+  for (let x = row; x < big; x++) {
+    if (creaseField.phi[row * big + x] <= 0) break;
+    profile.push(creaseField.height[row * big + x]);
+  }
+  let kink = 0;
+  for (let i = 1; i < profile.length - 1; i++) {
+    const before = Math.atan2(profile[i] - profile[i - 1], mmPerPx);
+    const after = Math.atan2(profile[i + 1] - profile[i], mmPerPx);
+    kink = Math.max(kink, Math.abs(after - before) * 180 / Math.PI);
+  }
+  assert.ok(kink < 30, `no hard crease inside the surface (worst ${kink.toFixed(1)} deg)`);
+  assert.ok(Math.max(...profile) > 5, `the puff keeps its height (${Math.max(...profile).toFixed(2)} mm)`);
 }
 
 // --- height field ---------------------------------------------------------
