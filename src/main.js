@@ -1,5 +1,4 @@
 import { rasterizeText, rasterizeSVG, rasterizeDXF } from './raster.js?v=20260811a';
-import { dilate } from './edt.js?v=20260811a';
 import { buildHeightField } from './puff.js?v=20260811a';
 import { buildMesh } from './mesh.js?v=20260811a';
 import { renderPreview } from './preview.js?v=20260811a';
@@ -82,17 +81,16 @@ async function regenerate() {
   await new Promise((r) => requestAnimationFrame(r));
 
   try {
-    let mask = await buildMask(n, opts);
-    if (!mask) {
+    const coverage = await buildMask(n, opts);
+    if (!coverage) {
       statusEl.textContent = mode === 'svg' ? 'SVGファイルを選んでください。' : 'DXFファイルを選んでください。';
       return;
     }
-    if (mode === 'text' && opts.bold > 0) {
-      mask = dilate(mask, n, n, (opts.bold / opts.sizeMM) * n);
-    }
+    // Only text gets the extra weight; vector input is taken as drawn.
+    if (mode !== 'text') opts.bold = 0;
 
     const started = performance.now();
-    lastField = buildHeightField(mask, n, opts);
+    lastField = buildHeightField(coverage, n, opts);
     const elapsed = Math.round(performance.now() - started);
     if (viewer) viewer.setField(lastField);
     else renderPreview(previewCanvas, lastField, PREVIEW_COLORS);

@@ -89,20 +89,22 @@ function multiply(a, b) {
 
 /** Sample the height field down so the preview stays interactive. */
 function coarsen(field, maxN) {
-  const { height, solid, n, mmPerPx } = field;
+  const { height, solid, phi, n, mmPerPx } = field;
   const step = Math.max(1, Math.ceil(n / maxN));
   if (step === 1) return field;
   const m = Math.floor(n / step);
   const h = new Float32Array(m * m);
   const s = new Uint8Array(m * m);
+  const f = new Float32Array(m * m);
   for (let y = 0; y < m; y++) {
     for (let x = 0; x < m; x++) {
       const src = (y * step) * n + x * step;
       h[y * m + x] = height[src];
       s[y * m + x] = solid[src];
+      f[y * m + x] = phi[src] / step;
     }
   }
-  return { height: h, solid: s, n: m, mmPerPx: mmPerPx * step };
+  return { height: h, solid: s, phi: f, n: m, mmPerPx: mmPerPx * step };
 }
 
 function getContext(canvas) {

@@ -6,6 +6,8 @@ import { buildHeightField } from '../src/puff.js';
 import { solveCapillary } from '../src/capillary.js';
 import { buildMesh } from '../src/mesh.js';
 import { parseDXF, pathsBounds } from '../src/dxf.js';
+import { signedFromCoverage } from '../src/sdf.js';
+import { emitTriangles, WALL } from '../src/mesh.js';
 
 const n = 128;
 
@@ -100,6 +102,47 @@ const bare = buildHeightField(square, n, { ...opts, baseShape: 'none', outlineWi
 assert.equal(bare.solid[0], 0, 'nothing outside the letters');
 const bareMesh = buildMesh(bare);
 assert.equal(countBadEdges(bareMesh.buffer, bareMesh.triangles), 0, 'letters-only mesh is closed');
+
+// --- sub-pixel outline ----------------------------------------------------
+// A disc rasterized with antialiasing: the mesher must place its wall vertices
+// on the true circle, not on pixel corners. Thresholded occupancy would leave
+// errors of half a pixel; marching squares over the coverage-derived field
+// should be an order of magnitude better.
+{
+  const R = 20.3;
+  const coverage = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      // Box-filter the disc over the pixel, the way a rasterizer would.
+      let hits = 0;
+      for (let sy = 0; sy < 4; sy++) {
+        for (let sx = 0; sx < 4; sx++) {
+          // Samples must straddle the pixel centre, which sits at x - n/2 + 0.5.
+          const px = x - n / 2 + (sx + 0.5) / 4;
+          const py = y - n / 2 + (sy + 0.5) / 4;
+          if (Math.hypot(px, py) <= R) hits++;
+        }
+      }
+      coverage[y * n + x] = hits / 16;
+    }
+  }
+  const phi = signedFromCoverage(coverage, n);
+  const height = new Float32Array(n * n).fill(2);
+  const mmPerPx = 1;
+
+  let worst = 0;
+  emitTriangles({ height, phi, n, mmPerPx }, (ax, ay, az, bx, by, bz, cx, cy, cz, kind) => {
+    if (kind !== WALL) return;
+    for (const [x, y] of [[ax, ay], [bx, by], [cx, cy]]) {
+      // World origin sits at the grid centre, half a pixel off the disc centre.
+      worst = Math.max(worst, Math.abs(Math.hypot(x + 0.5, y - 0.5) - R));
+    }
+  });
+  // Occupancy-based meshing would sit at ~0.5px (half a cell). The floor here
+  // is the linear coverage → distance inversion, which is exact for an
+  // axis-aligned edge and off by ~0.15px at worst on a diagonal one.
+  assert.ok(worst < 0.12, `outline is sub-pixel accurate, worst error ${worst.toFixed(3)} px`);
+}
 
 // --- DXF ------------------------------------------------------------------
 const dxf = [

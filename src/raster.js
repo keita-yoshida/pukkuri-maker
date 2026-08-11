@@ -14,20 +14,26 @@ function makeCanvas(n) {
   return canvas;
 }
 
-/** Alpha channel of a canvas -> Uint8Array mask (1 where alpha > 128). */
-function maskFromCanvas(canvas) {
+/**
+ * Alpha channel of a canvas -> per-pixel coverage in 0..1.
+ *
+ * The fractional values along an outline are not noise to be thresholded away:
+ * they are how far the true edge runs through each pixel, and sdf.js turns
+ * them into a sub-pixel accurate boundary.
+ */
+function coverageFromCanvas(canvas) {
   const n = canvas.width;
   const data = canvas.getContext('2d').getImageData(0, 0, n, n).data;
-  const mask = new Uint8Array(n * n);
-  for (let i = 0; i < mask.length; i++) mask[i] = data[i * 4 + 3] > 128 ? 1 : 0;
-  return mask;
+  const coverage = new Float32Array(n * n);
+  for (let i = 0; i < coverage.length; i++) coverage[i] = data[i * 4 + 3] / 255;
+  return coverage;
 }
 
 export function rasterizeText(n, { text, fontFamily, tracking }) {
   const canvas = makeCanvas(n);
   const ctx = canvas.getContext('2d');
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return new Uint8Array(n * n);
+  if (!lines.length) return new Float32Array(n * n);
 
   const box = n * (1 - 2 * MARGIN);
   const probe = 100;
@@ -60,7 +66,7 @@ export function rasterizeText(n, { text, fontFamily, tracking }) {
       x += ctx.measureText(ch).width + gap;
     }
   });
-  return maskFromCanvas(canvas);
+  return coverageFromCanvas(canvas);
 }
 
 // Chrome/Safari refuse to give an <img> an intrinsic size for an SVG that only
@@ -99,7 +105,7 @@ export function rasterizeSVG(n, rawSvgText) {
       const dh = h * scale;
       ctx.drawImage(img, (n - dw) / 2, (n - dh) / 2, dw, dh);
       URL.revokeObjectURL(url);
-      resolve(maskFromCanvas(canvas));
+      resolve(coverageFromCanvas(canvas));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -142,5 +148,5 @@ export function rasterizeDXF(n, dxfText, { fill, strokeMM, sizeMM }) {
     }
     ctx.stroke();
   }
-  return maskFromCanvas(canvas);
+  return coverageFromCanvas(canvas);
 }
